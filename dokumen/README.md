@@ -143,6 +143,7 @@ python3 Shared/scripts/zentha_mini_ctl.py doctor
 python3 Shared/scripts/zentha_mini_ctl.py logs
 python3 Shared/scripts/zentha_mini_ctl.py telemetry
 python3 Shared/scripts/zentha_mini_ctl.py update-check
+python3 Shared/scripts/zentha_mini_ctl.py update-download            # GitHub Releases: download + verify + stage
 python3 Shared/scripts/zentha_mini_ctl.py update-prepare --version 1.0.2 --yes
 python3 Shared/scripts/zentha_mini_ctl.py update-status
 python3 Shared/scripts/zentha_mini_ctl.py update-apply --version 1.0.2 --yes
@@ -190,11 +191,22 @@ rate-limited (five failures per five minutes). With `--require-https true`,
 agent traffic from other machines must use the `--https` server mode so the
 token never travels in clear text.
 
-`update-prepare`, `update-apply`, `update-rollback` and `telemetry-clear` change
-state; the CLI requires `--yes` (the API requires `confirm: true`) after explicit
-approval. Updates are accepted only from a verified local `dist/*.tar.gz`; the
+`update-apply`, `update-rollback` and `telemetry-clear` change state; the CLI
+requires `--yes` (the API requires `confirm: true`) after explicit approval.
+Updates are accepted only from a verified `zenthmini_<version>.tar.gz`; the
 `.deb` package is not used by the updater. Every applied file is backed up under
 `<chat_data>/updates/backups/` before replacement so rollback is possible.
+
+### Updates from GitHub
+
+`update-download` fetches the latest published release from the repository in
+`ZENTHA_UPDATE_REPO` (default `zenthralixlab-png/zenthamini`), requires the
+asset's SHA-256 `digest` or a published `SHA256SUMS` asset, verifies the bytes,
+then stages the source files. Applying is still a separate `update-apply` step.
+Set `ZENTHA_GITHUB_TOKEN` only if you need a higher API rate limit or the repo
+is private. The in-app update banner uses the same path: it shows the new
+version and its **Update now** button stages the release for the next restart.
+A release without a published checksum is refused rather than installed.
 
 When `hermes.secret` is configured in Settings, the client signs each request as
 `METHOD:path:timestamp:nonce:sha256(body)` with HMAC-SHA256 and sends

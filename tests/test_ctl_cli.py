@@ -58,6 +58,13 @@ def test_shell_command_does_not_override_agent_command(monkeypatch):
     assert "command" not in fields
 
 
+def test_update_download_builds_github_request(monkeypatch):
+    calls = _run_cli(monkeypatch, ["update-download", "--version", "1.0.3"])
+    name, fields = calls[0]
+    assert name == "update_download"
+    assert fields == {"version": "1.0.3"}
+
+
 def test_hermes_configure_reads_secret_from_file(monkeypatch, tmp_path):
     secret = tmp_path / "secret"
     secret.write_text("signed-secret\n", encoding="utf-8")

@@ -249,24 +249,43 @@ def _version_order(value):
 
 
 def _update_check_data():
+    """Compare the running version with the latest published GitHub release."""
     current = _read_version()
+    repo = (os.environ.get("ZENTHA_UPDATE_REPO")
+            or getattr(zentha_maintenance, "DEFAULT_GITHUB_REPO", "zenthralixlab-png/zenthamini"))
     latest = current
     available = False
     error = None
-    manifest_url = "https://raw.githubusercontent.com/Zenthralix/ZenthaMini/main/VERSION"
-    try:
-        req = urllib.request.Request(manifest_url, headers={"User-Agent": "ZenthaMini"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            latest = resp.read().decode("utf-8").strip()
-        available = bool(latest) and _version_order(latest) > _version_order(current)
-    except Exception as exc:
-        error = str(exc)
+    notes = ""
+    published_at = None
+    release_url = f"https://github.com/{repo}/releases"
+    if zentha_maintenance is not None:
+        try:
+            release = zentha_maintenance.github_latest_release(repo)
+            latest = release["version"] or current
+            release_url = release["release_url"] or release_url
+            notes = release["notes"]
+            published_at = release["published_at"] or None
+        except Exception as exc:
+            error = str(exc)
+            # Fall back to the raw VERSION file so a GitHub hiccup does not
+            # hide an update that a cached mirror already knows about.
+            manifest_url = f"https://raw.githubusercontent.com/{repo}/main/VERSION"
+            try:
+                req = urllib.request.Request(manifest_url, headers={"User-Agent": "ZenthaMini"})
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    latest = resp.read().decode("utf-8").strip() or current
+            except Exception as exc2:
+                error = "%s / %s" % (error, exc2)
+    available = bool(latest) and _version_order(latest) > _version_order(current)
     return {
         "current": current,
         "latest": latest,
         "available": available,
-        "release_url": "https://github.com/Zenthralix/ZenthaMini/releases",
-        "changelog": "",
+        "repo": repo,
+        "release_url": release_url,
+        "released_at": published_at,
+        "changelog": notes,
         "error": error,
     }
 
@@ -1888,6 +1907,9 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         elif path == "/api/settings":
             self._save_settings()
 
+        elif path == "/api/update/download":
+            self._update_download()
+
         elif path == "/api/agent/command":
             if not self._agent_authorized():
                 self._unauthorized(); return
@@ -2240,6 +2262,32 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(payload).encode())
 
+    def _update_download(self):
+        """Download + verify + stage a GitHub release (applying stays a separate step)."""
+        request_context = self._build_request_context("/api/update/download")
+        try:
+            body = self._read_body()
+            incoming = json.loads(body) if body else {}
+            if not isinstance(incoming, dict):
+                raise ValueError("payload must be an object")
+            if zentha_maintenance is None:
+                raise RuntimeError("maintenance module unavailable")
+            result = zentha_maintenance.download_release(
+                APP_ROOT, CHATS_DIR, repo=incoming.get("repo"),
+                version=incoming.get("version"), asset=incoming.get("asset"))
+            _log_event(logging.INFO, "GitHub update downloaded and staged",
+                       request_context=request_context)
+            payload, status = {"ok": True, **result}, 200
+        except Exception as exc:
+            _log_event(logging.WARNING, "GitHub update download failed: %s" % exc,
+                       request_context=request_context)
+            payload, status = {"ok": False, "error": str(exc)}, 400
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode())
+
     # ── Agent API (Hermes integration) ────────────────────────
     def _agent_token(self):
         self._send_agent_json({"ok": True, "token": _effective_agent_token(),
@@ -2377,13 +2425,21 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                     "update": update,
                     "log_file": LOG_FILE,
                 }
-            elif cmd in ("update_check", "update_status", "update_prepare",
+            elif cmd in ("update_check", "update_status", "update_prepare", "update_download",
                          "update_apply", "update_rollback", "telemetry_clear"):
                 if zentha_maintenance is None:
                     raise RuntimeError("maintenance module unavailable")
                 if cmd in ("update_apply", "update_rollback", "telemetry_clear") and incoming.get("confirm") is not True:
                     raise ValueError("confirm: true is required for this command")
-                if cmd == "update_check":
+                if cmd == "update_download" and not getattr(self, "_agent_hmac_ok", False):
+                    raise PermissionError(
+                        "update_download requires HMAC signing: set hermes.secret")
+                if cmd == "update_download":
+                    downloaded = zentha_maintenance.download_release(
+                        APP_ROOT, CHATS_DIR, repo=incoming.get("repo"),
+                        version=incoming.get("version"), asset=incoming.get("asset"))
+                    result = {"ok": True, "command": cmd, **downloaded}
+                elif cmd == "update_check":
                     result = {"ok": True, "command": cmd, **_update_check_data()}
                 elif cmd == "update_status":
                     result = {"ok": True, "command": cmd,

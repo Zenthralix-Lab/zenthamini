@@ -96,6 +96,8 @@
     .update-banner.hidden { display: none; }
     .update-banner a { color: #fff; text-decoration: underline; }
     .update-banner button { color: #fff; }
+    .update-banner .update-btn { background: #fff; color: #5a3fd4; border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-weight: 600; }
+    .update-banner .update-btn:disabled { opacity: .6; cursor: default; }
     body { -webkit-user-select: none; user-select: none; }
     input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
   </style>
@@ -2046,6 +2048,7 @@
       <div id="update-banner" class="update-banner hidden">
         <span id="update-text">Update available</span>
         <a id="update-link" href="#" target="_blank" rel="noopener">View release</a>
+        <button id="update-download" class="update-btn" type="button">Update now</button>
         <button id="update-dismiss" class="modal-close" aria-label="Dismiss">&times;</button>
       </div>
 
@@ -2366,6 +2369,7 @@
       updateBanner: $('#update-banner'),
       updateText: $('#update-text'),
       updateLink: $('#update-link'),
+      updateDownload: $('#update-download'),
       updateDismiss: $('#update-dismiss'),
     };
 
@@ -2384,6 +2388,7 @@
               D.updateLink.rel = 'noopener noreferrer';
               if (!release) D.updateLink.removeAttribute('href');
             }
+            if (D.updateDownload) D.updateDownload.dataset.version = d.latest || '';
             if (D.updateBanner) D.updateBanner.classList.remove('hidden');
           }
         } catch (e) {}
@@ -3841,6 +3846,26 @@
       D.sysClr.addEventListener('click', clearGlobalPrompt);
       if (D.settingsBtn) D.settingsBtn.addEventListener('click', openSettings);
       if (D.settingsClose) D.settingsClose.addEventListener('click', closeSettings);
+      if (D.updateDownload) D.updateDownload.addEventListener('click', async () => {
+        const version = D.updateDownload.dataset.version || '';
+        D.updateDownload.disabled = true;
+        if (D.updateText) D.updateText.textContent = 'Downloading update ' + (version || '') + '...';
+        try {
+          const r = await fetch('/api/update/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(version ? { version: version } : {}),
+          });
+          const res = await r.json();
+          if (!r.ok || !res.ok) throw new Error(res.error || 'download failed');
+          if (D.updateText) D.updateText.textContent = 'Update ' + res.version + ' staged. Restart ZenthaMini to finish.';
+          if (D.updateLink) D.updateLink.style.display = 'none';
+          D.updateDownload.remove();
+        } catch (e) {
+          if (D.updateText) D.updateText.textContent = 'Update failed: ' + e.message;
+          D.updateDownload.disabled = false;
+        }
+      });
       if (D.updateDismiss) D.updateDismiss.addEventListener('click', () => {
         if (D.updateBanner) D.updateBanner.classList.add('hidden');
       });

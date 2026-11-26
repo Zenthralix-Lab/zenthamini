@@ -14,6 +14,7 @@ Then, from Hermes:
     python3 zentha_mini_ctl.py status
     python3 zentha_mini_ctl.py telemetry
     python3 zentha_mini_ctl.py update-check
+    python3 zentha_mini_ctl.py update-download            # from GitHub Releases
     python3 zentha_mini_ctl.py update-prepare --version 1.0.2 --yes
     python3 zentha_mini_ctl.py update-apply --version 1.0.2 --yes   # needs approval
 """
@@ -268,6 +269,11 @@ def _run(args, cfg: dict) -> dict:
         if args.markdown:
             fields["format"] = "markdown"
         return _command(cfg, READ_COMMANDS[args.action], fields)
+    if args.action == "update-download":
+        for key, value in (("version", args.version), ("repo", args.repo), ("asset", args.asset)):
+            if value:
+                fields[key] = value
+        return _command(cfg, "update_download", fields)
     if args.action in ("update-prepare", "update-apply"):
         if args.version:
             fields["version"] = args.version
@@ -364,6 +370,11 @@ def main(argv=None) -> int:
     clear.add_argument("--yes", action="store_true")
     sub.add_parser("update-check")
     sub.add_parser("update-status")
+    pull = sub.add_parser("update-download",
+                          help="download, verify and stage the latest release from GitHub")
+    pull.add_argument("--version", help="release to install (default: latest)")
+    pull.add_argument("--repo", help="GitHub owner/name (default: build's repo or ZENTHA_UPDATE_REPO)")
+    pull.add_argument("--asset", help="exact release asset basename")
     prep = sub.add_parser("update-prepare", help="verify + stage a local release artifact")
     prep.add_argument("--version")
     prep.add_argument("--artifact", help="basename in the app's dist/ directory")

@@ -103,6 +103,74 @@ def test_deb_is_refused(tmp_path):
         M.resolve_artifact(root, artifact=name)
 
 
+def _github_release(name, data, digest=None, extra_assets=None):
+    return [{
+        "tag_name": "v1.0.3", "draft": False, "prerelease": False,
+        "html_url": "https://github.com/o/r/releases/tag/v1.0.3",
+        "body": "release notes", "published_at": "2026-11-27T00:00:00Z",
+        "assets": [{"name": name, "size": len(data), "digest": digest or "",
+                    "browser_download_url": "https://example.test/" + name}]
+                   + list(extra_assets or []),
+    }]
+
+
+def test_download_release_verifies_digest_and_stages(tmp_path, monkeypatch):
+    build = tmp_path / "build"
+    name = _tarball(build, version="1.0.3")
+    data = (M.dist_dir(build) / name).read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    monkeypatch.setattr(M, "_github_json", lambda url, token="", timeout=20:
+                        _github_release(name, data, "sha256:" + digest))
+    monkeypatch.setattr(M, "_fetch_asset", lambda url, token="", timeout=300,
+                        max_bytes=M.MAX_ARTIFACT_BYTES: data)
+    root, chats = tmp_path / "root", tmp_path / "chats"
+    result = M.download_release(root, chats)
+    assert result["source"] == "github" and result["version"] == "1.0.3"
+    assert result["checksum_source"] == "asset-digest"
+    assert "Shared/chat_server.py" in result["files"]
+    assert M.read_checksums(root)[name] == digest
+    assert M.latest_staged(chats)[0]["artifact"] == name
+
+
+def test_download_release_accepts_sha256sums_asset(tmp_path, monkeypatch):
+    build = tmp_path / "build"
+    name = _tarball(build, version="1.0.3")
+    data = (M.dist_dir(build) / name).read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    sums = ("%s  %s\n" % (digest, name)).encode()
+    sums_asset = {"name": "SHA256SUMS", "size": len(sums), "digest": "",
+                  "browser_download_url": "https://example.test/SHA256SUMS"}
+    monkeypatch.setattr(M, "_github_json", lambda url, token="", timeout=20:
+                        _github_release(name, data, "", [sums_asset]))
+    monkeypatch.setattr(M, "_fetch_asset", lambda url, token="", timeout=300,
+                        max_bytes=M.MAX_ARTIFACT_BYTES:
+                        sums if url.endswith("SHA256SUMS") else data)
+    result = M.download_release(tmp_path / "root", tmp_path / "chats")
+    assert result["checksum_source"] == "SHA256SUMS" and result["version"] == "1.0.3"
+
+
+def test_download_release_rejects_bad_checksum(tmp_path, monkeypatch):
+    build = tmp_path / "build"
+    name = _tarball(build, version="1.0.3")
+    data = (M.dist_dir(build) / name).read_bytes()
+    monkeypatch.setattr(M, "_github_json", lambda url, token="", timeout=20:
+                        _github_release(name, data, "sha256:" + "0" * 64))
+    monkeypatch.setattr(M, "_fetch_asset", lambda url, token="", timeout=300,
+                        max_bytes=M.MAX_ARTIFACT_BYTES: data)
+    with pytest.raises(M.MaintenanceError, match="checksum mismatch"):
+        M.download_release(tmp_path / "root", tmp_path / "chats")
+
+
+def test_download_release_requires_published_checksum(tmp_path, monkeypatch):
+    build = tmp_path / "build"
+    name = _tarball(build, version="1.0.3")
+    data = (M.dist_dir(build) / name).read_bytes()
+    monkeypatch.setattr(M, "_github_json", lambda url, token="", timeout=20:
+                        _github_release(name, data))
+    with pytest.raises(M.MaintenanceError, match="no SHA-256"):
+        M.download_release(tmp_path / "root", tmp_path / "chats")
+
+
 def test_update_state_reports_artifacts(tmp_path):
     root = tmp_path / "root"
     name = _tarball(root)

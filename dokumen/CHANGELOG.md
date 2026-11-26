@@ -36,6 +36,16 @@
   injection hardening); only literal statements run.
 - Agent body limit raised to 2 MB for file writes, still capped and rate-limited.
 
+### Updates from GitHub
+- `update-download` (CLI, agent API and the in-app update banner) fetches the
+  latest GitHub release from `zenthralixlab-png/zenthamini` (override with
+  `ZENTHA_UPDATE_REPO`), verifies the asset's published SHA-256 `digest` or
+  `SHA256SUMS`, stores it in `dist/` and stages it for `update-apply`. Releases
+  without a published checksum are refused. `ZENTHA_GITHUB_TOKEN` is optional.
+- Fixed the update check to query GitHub Releases instead of a non-existent
+  `Zenthralix/ZenthaMini` branch, so the banner reports the real latest version,
+  release notes and release URL.
+
 ### Tests & CI
 - Added an end-to-end test that runs the real `zentha_mini_ctl.py` process against
   the agent API (setup, status, shell, file commands and the unsigned-request

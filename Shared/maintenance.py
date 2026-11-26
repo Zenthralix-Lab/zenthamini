@@ -14,6 +14,8 @@ import re
 import shutil
 import tarfile
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -32,6 +34,9 @@ ALLOWED_SUFFIXES = {
 }
 ALLOWED_NAMES = {"VERSION", "LICENSE", ".gitignore"}
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
+GITHUB_API = "https://api.github.com"
+DEFAULT_GITHUB_REPO = "zenthralixlab-png/zenthamini"
+RELEASE_NOTES_LIMIT = 8000
 
 
 class MaintenanceError(Exception):
@@ -74,16 +79,189 @@ def marker_path(root: str | Path) -> Path:
     return Path(root) / ".zentha-update-applied.json"
 
 
-def read_checksums(root: str | Path) -> dict[str, str]:
-    path = dist_dir(root) / "SHA256SUMS"
-    if not path.is_file():
-        return {}
+def _parse_checksums(text: str) -> dict[str, str]:
     out = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in (text or "").splitlines():
         parts = line.split(maxsplit=1)
         if len(parts) == 2 and re.fullmatch(r"[0-9a-f]{64}", parts[0]):
             out[os.path.basename(parts[1].strip())] = parts[0]
     return out
+
+
+def read_checksums(root: str | Path) -> dict[str, str]:
+    path = dist_dir(root) / "SHA256SUMS"
+    if not path.is_file():
+        return {}
+    return _parse_checksums(path.read_text(encoding="utf-8"))
+
+
+def _record_checksum(root: str | Path, name: str, digest: str) -> None:
+    """Merge one verified artifact into dist/SHA256SUMS for stage() to trust."""
+    sums = read_checksums(root)
+    sums[name] = digest
+    path = dist_dir(root) / "SHA256SUMS"
+    path.write_text("".join("%s  %s\n" % (sums[n], n) for n in sorted(sums)),
+                    encoding="utf-8")
+
+
+def github_repo(slug: str | None = None) -> str:
+    """owner/name of the release repository (ZENTHA_UPDATE_REPO overrides)."""
+    value = (slug or os.environ.get("ZENTHA_UPDATE_REPO") or DEFAULT_GITHUB_REPO).strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value):
+        raise MaintenanceError("github repo must look like owner/name")
+    return value
+
+
+def _github_headers(token: str = "", accept: str = "application/vnd.github+json") -> dict:
+    headers = {"User-Agent": "ZenthaMini", "Accept": accept}
+    token = token or os.environ.get("ZENTHA_GITHUB_TOKEN") or ""
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    return headers
+
+
+def _github_json(url: str, token: str = "", timeout: int = 20):
+    req = urllib.request.Request(url, headers=_github_headers(token))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise MaintenanceError("no GitHub releases published yet")
+        raise MaintenanceError("GitHub release lookup failed: HTTP %s" % exc.code)
+    except (urllib.error.URLError, ValueError, OSError) as exc:
+        raise MaintenanceError("GitHub release lookup failed: %s" % exc)
+
+
+def _fetch_asset(url: str, token: str = "", timeout: int = 300,
+                 max_bytes: int = MAX_ARTIFACT_BYTES) -> bytes:
+    req = urllib.request.Request(url, headers=_github_headers(token, "application/octet-stream"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read(max_bytes + 1)
+    except (urllib.error.URLError, OSError) as exc:
+        raise MaintenanceError("cannot download release asset: %s" % exc)
+    if len(data) > max_bytes:
+        raise MaintenanceError("release asset is larger than the %s MB limit"
+                               % (max_bytes // (1024 * 1024)))
+    return data
+
+
+def _release_version(release: dict) -> str:
+    tag = str(release.get("tag_name") or release.get("name") or "")
+    match = re.search(r"\d+\.\d+\.\d+(?:[-.][A-Za-z0-9]+)*", tag)
+    return match.group(0) if match else ""
+
+
+def github_releases(repo: str | None = None, token: str = "",
+                    include_prerelease: bool = False, limit: int = 30) -> list[dict]:
+    """Published releases, newest first, with the assets ZenthaMini can install."""
+    repo = github_repo(repo)
+    url = "%s/repos/%s/releases?per_page=%d" % (GITHUB_API, repo, max(1, min(int(limit), 100)))
+    data = _github_json(url, token)
+    if not isinstance(data, list):
+        raise MaintenanceError("unexpected GitHub response")
+    out = []
+    for release in data:
+        if not isinstance(release, dict) or release.get("draft"):
+            continue
+        if release.get("prerelease") and not include_prerelease:
+            continue
+        version = _release_version(release)
+        if not version:
+            continue
+        assets = []
+        for asset in release.get("assets") or []:
+            if not isinstance(asset, dict) or not asset.get("name"):
+                continue
+            assets.append({
+                "name": asset["name"],
+                "size": asset.get("size") or 0,
+                "digest": asset.get("digest") or "",
+                "url": asset.get("browser_download_url") or asset.get("url") or "",
+            })
+        out.append({
+            "version": version,
+            "tag": release.get("tag_name") or "",
+            "name": release.get("name") or version,
+            "release_url": release.get("html_url") or "https://github.com/%s/releases" % repo,
+            "notes": (release.get("body") or "")[:RELEASE_NOTES_LIMIT],
+            "published_at": release.get("published_at") or "",
+            "prerelease": bool(release.get("prerelease")),
+            "assets": assets,
+        })
+    if not out:
+        raise MaintenanceError("no published releases for %s" % repo)
+    return sorted(out, key=lambda rel: version_key(rel["version"]), reverse=True)
+
+
+def github_latest_release(repo: str | None = None, token: str = "",
+                          include_prerelease: bool = False) -> dict:
+    return github_releases(repo, token, include_prerelease)[0]
+
+
+def _release_checksum(release: dict, asset: dict, token: str = "") -> tuple[str, str]:
+    """Return (sha256, source). Refuse releases that publish no checksum."""
+    digest = str(asset.get("digest") or "")
+    if digest.startswith("sha256:") and re.fullmatch(r"[0-9a-f]{64}", digest[7:]):
+        return digest[7:], "asset-digest"
+    for other in release.get("assets") or []:
+        if str(other.get("name") or "").upper() == "SHA256SUMS" and other.get("url"):
+            data = _fetch_asset(other["url"], token, timeout=30, max_bytes=1024 * 1024)
+            published = _parse_checksums(data.decode("utf-8", "replace"))
+            if published.get(asset["name"]):
+                return published[asset["name"]], "SHA256SUMS"
+    raise MaintenanceError(
+        "release publishes no SHA-256 for %s; upload a SHA256SUMS asset or a digest"
+        % asset["name"])
+
+
+def download_release(root: str | Path, chats_dir: str | Path, repo: str | None = None,
+                     version: str | None = None, token: str = "",
+                     asset: str | None = None) -> dict:
+    """Download a release tarball from GitHub, verify it, then stage it."""
+    repo = github_repo(repo)
+    releases = github_releases(repo, token, include_prerelease=False)
+    if version:
+        wanted = version[1:] if version.lower().startswith("v") else version
+        releases = [rel for rel in releases if rel["version"] == wanted]
+        if not releases:
+            raise MaintenanceError("release %s not found on GitHub" % version)
+    release = releases[0]
+    candidates = [a for a in release["assets"]
+                  if ARTIFACT_RE.match(a["name"]) and a["name"].endswith(".tar.gz")]
+    if asset:
+        if os.path.basename(asset) != asset:
+            raise MaintenanceError("asset must be a basename")
+        candidates = [a for a in candidates if a["name"] == asset]
+    if not candidates:
+        raise MaintenanceError(
+            "release %s has no portable .tar.gz asset (found: %s)"
+            % (release["version"], ", ".join(a["name"] for a in release["assets"]) or "none"))
+    chosen = sorted(candidates, key=lambda a: a["size"])[-1]
+    if chosen["size"] and chosen["size"] > MAX_ARTIFACT_BYTES:
+        raise MaintenanceError("release asset is larger than the allowed limit")
+    expected, checksum_source = _release_checksum(release, chosen, token)
+    data = _fetch_asset(chosen["url"], token)
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != expected:
+        raise MaintenanceError("checksum mismatch for %s; refusing the download" % chosen["name"])
+    dist = dist_dir(root)
+    dist.mkdir(parents=True, exist_ok=True)
+    tmp = dist / (chosen["name"] + ".part")
+    tmp.write_bytes(data)
+    os.replace(tmp, dist / chosen["name"])
+    _record_checksum(root, chosen["name"], digest)
+    result = stage(root, chats_dir, artifact=chosen["name"], version=release["version"])
+    result.update({
+        "source": "github",
+        "repo": repo,
+        "release_url": release["release_url"],
+        "release_notes": release["notes"],
+        "downloaded_from": chosen["url"],
+        "checksum_source": checksum_source,
+    })
+    return result
 
 
 def list_artifacts(root: str | Path) -> list[dict]:

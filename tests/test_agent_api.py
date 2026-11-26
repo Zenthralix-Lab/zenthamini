@@ -285,6 +285,9 @@ def test_privileged_control_requires_signed_agent():
     st, d = agent("monitor")
     assert st == 200 and d["ok"] is False
     assert "HMAC" in (d.get("error") or "")
+    st, d = agent("update_download")
+    assert st == 200 and d["ok"] is False
+    assert "HMAC" in (d.get("error") or "")
 
 
 def test_signed_agent_can_run_shell_and_read_install_id():
