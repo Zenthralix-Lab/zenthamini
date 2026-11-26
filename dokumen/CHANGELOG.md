@@ -36,6 +36,12 @@
   injection hardening); only literal statements run.
 - Agent body limit raised to 2 MB for file writes, still capped and rate-limited.
 
+### Tests & CI
+- Added an end-to-end test that runs the real `zentha_mini_ctl.py` process against
+  the agent API (setup, status, shell, file commands and the unsigned-request
+  rejection), covering the wire format the unit tests stub out.
+- Added a GitHub Actions workflow running the suite on Python 3.10 and 3.12.
+
 ## 1.0.2 (2026-11-25)
 - Added a zero-dependency remote maintenance CLI (`Shared/scripts/zentha_mini_ctl.py`)
   and new agent commands: `maintenance_status`, `update_check`, `update_status`,
