@@ -15,6 +15,7 @@ import shutil
 import tarfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -135,7 +136,12 @@ def _github_json(url: str, token: str = "", timeout: int = 20):
 
 def _fetch_asset(url: str, token: str = "", timeout: int = 300,
                  max_bytes: int = MAX_ARTIFACT_BYTES) -> bytes:
-    req = urllib.request.Request(url, headers=_github_headers(token, "application/octet-stream"))
+    # Only the REST API needs the binary Accept header. GitHub's release CDN
+    # answers that variant with a stale copy of a re-uploaded asset, which
+    # then fails checksum verification, so downloads go out with a plain Accept.
+    api = urllib.parse.urlsplit(url).hostname == "api.github.com"
+    headers = _github_headers(token, "application/octet-stream" if api else "*/*")
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = resp.read(max_bytes + 1)

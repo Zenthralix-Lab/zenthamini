@@ -171,6 +171,30 @@ def test_download_release_requires_published_checksum(tmp_path, monkeypatch):
         M.download_release(tmp_path / "root", tmp_path / "chats")
 
 
+def test_fetch_asset_asks_for_binary_only_from_the_api(monkeypatch):
+    seen = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, size=-1):
+            return b"data"
+
+    def fake_urlopen(req, timeout=None):
+        seen.append(req)
+        return Response()
+
+    monkeypatch.setattr(M.urllib.request, "urlopen", fake_urlopen)
+    M._fetch_asset("https://api.github.com/repos/o/r/releases/assets/1")
+    M._fetch_asset("https://github.com/o/r/releases/download/v1/zenthmini_1.0.3.tar.gz")
+    assert seen[0].get_header("Accept") == "application/octet-stream"
+    assert seen[1].get_header("Accept") == "*/*"
+
+
 def test_update_state_reports_artifacts(tmp_path):
     root = tmp_path / "root"
     name = _tarball(root)

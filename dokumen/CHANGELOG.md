@@ -42,6 +42,9 @@
   `ZENTHA_UPDATE_REPO`), verifies the asset's published SHA-256 `digest` or
   `SHA256SUMS`, stores it in `dist/` and stages it for `update-apply`. Releases
   without a published checksum are refused. `ZENTHA_GITHUB_TOKEN` is optional.
+- Fixed downloads of re-uploaded release assets: `Accept: application/octet-stream`
+  is now sent only to `api.github.com`, because GitHub's download CDN answers
+  that variant with a stale copy that never matches the published digest.
 - Fixed the update check to query GitHub Releases instead of a non-existent
   `Zenthralix/ZenthaMini` branch, so the banner reports the real latest version,
   release notes and release URL.
