@@ -40,5 +40,6 @@ def test_build_emits_stageable_tarball(tmp_path):
     assert staged["version"] == version
     files = set(staged["files"])
     assert {"Shared/chat_server.py", "Shared/maintenance.py"} <= files
-    assert not any(p.startswith(("chat_data/", "logs/", "dist/"))
-                   or p.endswith((".pyc", "agent.token")) for p in files)
+    assert not any(p.startswith(("chat_data/", "logs/"))
+                   or p.endswith((".pyc", "agent.token", ".tar.gz", ".deb", "SHA256SUMS"))
+                   for p in files)
