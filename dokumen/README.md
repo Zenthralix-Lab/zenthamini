@@ -112,14 +112,21 @@ python3 zenthralix-matrix.py
 
 `dist/` holds the packaged release:
 
-- `zenthmini_1.0.2_all.deb` — Debian/Ubuntu package; installs the app under `/opt/zenthmini`.
+- `zenthmini_1.0.3_all.deb` — Debian/Ubuntu package; installs the app under `/opt/zenthmini`.
   Chat data and logs are linked to `/var/lib/zenthmini/` so non-root users can write them.
-- `zenthmini_1.0.2.tar.gz` — portable tarball; extract and run the launchers above.
+- `zenthmini_1.0.3.tar.gz` — portable tarball; extract and run the launchers above.
 - `SHA256SUMS` — checksums for both artifacts; the maintenance agent refuses to
   stage a release that is not listed here.
 
 Rebuild all three after any source change with `bash dist/build.sh` (uses only
-`dpkg-deb`, `tar` and `sha256sum`).
+`dpkg-deb`, `tar` and `sha256sum`). Version comes from `Shared/VERSION`; only
+tracked sources are packaged, so chats, logs, models, engines and tokens can
+never leak into a release. Use `--tar-only` where `dpkg-deb` is unavailable.
+
+To publish: build, then create a GitHub release tagged `v<version>` with the
+tarball and `SHA256SUMS` attached. `update-download` only accepts an asset whose
+SHA-256 is published (asset digest or the `SHA256SUMS` asset), and stages it for
+`update-apply`.
 
 ## Remote maintenance (Hermes)
 

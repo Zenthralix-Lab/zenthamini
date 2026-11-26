@@ -12,8 +12,9 @@ Shared/python/
 Shared/vendor/
 Shared/*.zip
 
-# Release artifacts
-dist/
+# Release artifacts (the builder itself is tracked)
+dist/*
+!dist/build.sh
 
 # Python caches
 __pycache__/

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.3 (2026-11-27)
 
 ### Remote agent: Hermes monitoring + full control
 - Fixed the remote-agent gate: `/api/agent/*` no longer requires a browser login
@@ -45,6 +45,13 @@
 - Fixed the update check to query GitHub Releases instead of a non-existent
   `Zenthralix/ZenthaMini` branch, so the banner reports the real latest version,
   release notes and release URL.
+
+### Release tooling
+- Added `dist/build.sh`, the builder the updater expects: it packages tracked
+  sources into `dist/zenthmini_<version>.tar.gz`, builds the `_all.deb` when
+  `dpkg-deb` is available, and rewrites `dist/SHA256SUMS`. Runtime data
+  (chats, logs, models, engines, tokens, TLS keys), caches and earlier
+  artifacts are never packaged; `--tar-only` skips the `.deb`.
 
 ### Tests & CI
 - Added an end-to-end test that runs the real `zentha_mini_ctl.py` process against
