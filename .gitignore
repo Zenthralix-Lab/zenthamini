@@ -1,0 +1,26 @@
+# ZenthaMini runtime data and secrets (agent token, settings, chat history)
+Shared/chat_data/
+Shared/logs/
+
+# Downloaded/bundled runtimes, engines and models (fetched by the installers)
+Shared/bin/
+Shared/lib/
+Shared/.engines/
+Shared/models/
+Shared/.ollama-runtime/
+Shared/python/
+Shared/vendor/
+Shared/*.zip
+
+# Release artifacts
+dist/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+Desktop.ini
