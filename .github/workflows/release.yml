@@ -53,6 +53,9 @@ jobs:
             gh release create "$tag" "${artifacts[@]}" \
               --title "ZenthaMini $version" --notes "$notes"
           fi
+          # A release whose tag was deleted comes back as a draft; a tag push
+          # must always end with a published release so update checks see it.
+          gh release edit "$tag" --draft=false
 
       - name: Keep the artifacts on the run
         uses: actions/upload-artifact@v4
