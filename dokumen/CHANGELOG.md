@@ -55,6 +55,11 @@
   `dpkg-deb` is available, and rewrites `dist/SHA256SUMS`. Runtime data
   (chats, logs, models, engines, tokens, TLS keys), caches and earlier
   artifacts are never packaged; `--tar-only` skips the `.deb`.
+- Added `.github/workflows/release.yml`: pushing a `v<version>` tag runs the
+  tests, refuses a tag that disagrees with `Shared/VERSION`, rebuilds the
+  artifacts and publishes them with the matching CHANGELOG section as notes.
+- Moved the README to the repository root so GitHub renders it, with the vendor
+  site and the Saweria sponsorship link at the top.
 
 ### Tests & CI
 - Added an end-to-end test that runs the real `zentha_mini_ctl.py` process against

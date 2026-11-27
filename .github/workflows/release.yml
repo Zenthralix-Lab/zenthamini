@@ -1,0 +1,63 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Check the tag matches Shared/VERSION
+        run: |
+          version=$(tr -d ' \t\r\n' < Shared/VERSION)
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Shared/VERSION ($version)"
+            exit 1
+          fi
+
+      - name: Build artifacts
+        run: bash dist/build.sh
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(tr -d ' \t\r\n' < Shared/VERSION)
+          tag="v$version"
+          artifacts=(
+            "dist/zenthmini_${version}.tar.gz"
+            "dist/zenthmini_${version}_all.deb"
+            "dist/SHA256SUMS"
+          )
+          notes=$(awk -v ver="$version" '$0 ~ "^## " ver {show=1; next} /^## / {show=0} show' dokumen/CHANGELOG.md)
+          [ -n "$notes" ] || notes="ZenthaMini $version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${artifacts[@]}" --clobber
+          else
+            gh release create "$tag" "${artifacts[@]}" \
+              --title "ZenthaMini $version" --notes "$notes"
+          fi
+
+      - name: Keep the artifacts on the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenthmini-${{ github.ref_name }}
+          path: |
+            dist/zenthmini_*
+            dist/SHA256SUMS

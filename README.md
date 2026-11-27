@@ -1,9 +1,11 @@
 # ZenthaMini — Local AI Chat (by Zenthralix)
 
+[Vendor website](https://zenthralix.vercel.app) · [Sponsor](https://saweria.co/ZenthralixLab) · [Changelog](dokumen/CHANGELOG.md) · [Install guide](dokumen/INSTRUKSI.md)
+
 ZenthaMini is a fully air-gapped, zero-dependency, plug-and-play local AI environment. It runs from a local folder or portable USB/SSD, serving an uncensored LLM through a web UI. Product of **Zenthralix**.
 
-Support: https://saweria.co/ZenthralixLab  
-Website: https://zenthralix.vercel.app
+- Vendor / official site: https://zenthralix.vercel.app
+- Sponsor the project: https://saweria.co/ZenthralixLab
 
 ## Features
 
@@ -95,10 +97,17 @@ python3 zenthralix-matrix.py
 
 (`Shared/zenthralix-matrix.py` is the same file.) Press `q` to quit.
 
-## Support & website
+## Sponsor & vendor
 
-- Support: https://saweria.co/ZenthralixLab
-- Website: https://zenthralix.vercel.app
+ZenthaMini is free and stays free. Sponsorship pays for test hardware, model
+downloads and release work, and keeps the project independent.
+
+- **Sponsor (Saweria):** https://saweria.co/ZenthralixLab
+- **Vendor / official site:** https://zenthralix.vercel.app
+
+If your company ships ZenthaMini on its own hardware, a one-off or recurring
+sponsorship is the most direct way to fund the next release. Bug reports and
+pull requests are just as welcome.
 
 ## Troubleshooting
 
@@ -124,7 +133,10 @@ tracked sources are packaged, so chats, logs, models, engines and tokens can
 never leak into a release. Use `--tar-only` where `dpkg-deb` is unavailable.
 
 To publish: build, then create a GitHub release tagged `v<version>` with the
-tarball and `SHA256SUMS` attached. `update-download` only accepts an asset whose
+tarball and `SHA256SUMS` attached. Pushing such a tag also triggers
+`.github/workflows/release.yml`, which runs the tests, checks that the tag
+matches `Shared/VERSION`, rebuilds the artifacts and publishes them with the
+release notes taken from `dokumen/CHANGELOG.md`. `update-download` only accepts an asset whose
 SHA-256 is published (asset digest or the `SHA256SUMS` asset), and stages it for
 `update-apply`.
 
